@@ -61,22 +61,47 @@ namespace WindBot.Game.AI
         {
             Chat = chat;
             DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(DialogsData));
-            using (FileStream fs = File.OpenRead(Path.Combine(path, "Dialogs/", dialogfilename + ".json")))
+            
+            // Ensure we have a valid dialog filename
+            if (string.IsNullOrEmpty(dialogfilename))
+                dialogfilename = "default";
+
+            // Ensure the dialog file exists
+            string dialogPath = Path.Combine(path, "Dialogs", dialogfilename + ".json");
+            if (!File.Exists(dialogPath))
             {
-                DialogsData data = (DialogsData)serializer.ReadObject(fs);
-                _welcome = data.welcome;
-                _deckerror = data.deckerror;
-                _duelstart = data.duelstart;
-                _newturn = data.newturn;
-                _endturn = data.endturn;
-                _directattack = data.directattack;
-                _attack = data.attack;
-                _ondirectattack = data.ondirectattack;
-                _facedownmonstername = data.facedownmonstername;
-                _activate = data.activate;
-                _summon = data.summon;
-                _setmonster = data.setmonster;
-                _chaining = data.chaining;
+                Logger.WriteErrorLine($"Dialog file not found: {dialogPath}");
+                dialogPath = Path.Combine(path, "Dialogs", "default.json");
+                if (!File.Exists(dialogPath))
+                {
+                    Logger.WriteErrorLine("Default dialog file not found either. Bot may not function correctly.");
+                    return;
+                }
+            }
+
+            try
+            {
+                using (FileStream fs = File.OpenRead(dialogPath))
+                {
+                    DialogsData data = (DialogsData)serializer.ReadObject(fs);
+                    _welcome = data.welcome;
+                    _deckerror = data.deckerror;
+                    _duelstart = data.duelstart;
+                    _newturn = data.newturn;
+                    _endturn = data.endturn;
+                    _directattack = data.directattack;
+                    _attack = data.attack;
+                    _ondirectattack = data.ondirectattack;
+                    _facedownmonstername = data.facedownmonstername;
+                    _activate = data.activate;
+                    _summon = data.summon;
+                    _setmonster = data.setmonster;
+                    _chaining = data.chaining;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLine($"Error loading dialog file: {ex.Message}");
             }
         }
 

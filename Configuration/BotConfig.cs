@@ -42,7 +42,7 @@ namespace WindBot.Configuration
         {
             try
             {
-                string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configuration", "bots.json");
+                string configPath = Path.Combine("Configuration", "bots.json");
                 if (!File.Exists(configPath))
                 {
                     Logger.WriteErrorLine($"Bot configuration file not found at: {configPath}");

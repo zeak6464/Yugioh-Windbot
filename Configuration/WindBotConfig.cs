@@ -20,7 +20,7 @@ namespace WindBot.Configuration
         public string Deck { get; set; }
         public string Name { get; set; }
         public string DeckFile { get; set; }
-        public string Dialog { get; set; }
+        public string Dialog { get; set; } = "default"; 
         public bool Debug { get; set; }
         public bool Chat { get; set; }
         public string CreateGame { get; set; }
@@ -50,7 +50,7 @@ namespace WindBot.Configuration
         {
             try
             {
-                string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configuration", "appsettings.json");
+                string configPath = Path.Combine(Directory.GetCurrentDirectory(), "Configuration", "appsettings.json");
                 if (!File.Exists(configPath))
                 {
                     Logger.WriteErrorLine($"Configuration file not found at: {configPath}");
@@ -58,8 +58,8 @@ namespace WindBot.Configuration
                 }
 
                 string jsonString = File.ReadAllText(configPath);
-                var config = JsonConvert.DeserializeObject<WindBotConfig>(jsonString);
-                return config ?? CreateDefault();
+                var rootConfig = JsonConvert.DeserializeObject<RootConfig>(jsonString);
+                return rootConfig?.WindBot ?? CreateDefault();
             }
             catch (Exception ex)
             {
@@ -81,6 +81,7 @@ namespace WindBot.Configuration
                 ServerMode = false,
                 Train = false,
                 ReplayDir = "Replays",
+                Dialog = "default", 
                 Debug = false,
                 Chat = true
             };
@@ -90,7 +91,7 @@ namespace WindBot.Configuration
     public class ServerConfig
     {
         public int Port { get; set; } = 2399;
-        public bool EnableHttps { get; set; } = false;
+        public bool EnableHttps { get; set; }
         public int MaxConcurrentBots { get; set; } = 10;
         public int RequestTimeout { get; set; } = 30000;
     }
@@ -110,17 +111,17 @@ namespace WindBot.Configuration
         public int MessageTimeout { get; set; } = 3000;
         public int HandshakeTimeout { get; set; } = 10000;
         public string DefaultHostInfo { get; set; } = "";
-        public int DefaultVersion { get; set; } = 0x1352;
-        public int DefaultHand { get; set; } = 0;
-        public int DefaultRoomId { get; set; } = 0;
+        public int DefaultVersion { get; set; } = 4946;
+        public int DefaultHand { get; set; }
+        public int DefaultRoomId { get; set; }
     }
 
     public class LoggingConfig
     {
         public string LogLevel { get; set; } = "Info";
-        public bool EnableDebug { get; set; } = false;
+        public bool EnableDebug { get; set; }
         public string LogFile { get; set; } = "windbot.log";
-        public long MaxLogSize { get; set; } = 10 * 1024 * 1024; // 10MB
+        public int MaxLogSize { get; set; } = 10485760;
         public int MaxLogFiles { get; set; } = 5;
     }
 
@@ -131,7 +132,7 @@ namespace WindBot.Configuration
         public string DefaultBehavior { get; set; } = "Smart";
     }
 
-    internal class RootConfig
+    public class RootConfig
     {
         public WindBotConfig WindBot { get; set; }
     }

@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Net;
 using System.Web;
+using System.Linq;
 using WindBot.Game;
 using WindBot.Game.AI;
 using YGOSharp.OCGWrapper;
@@ -20,12 +21,40 @@ namespace WindBot
         {
             Logger.WriteLine("WindBot starting...");
 
-            // Initialize configuration
-            var config = WindBotConfig.Instance;
-            
-            AssetPath = config.AssetPath;
+            // Set working directory to where the executable is
+            string exePath = AppDomain.CurrentDomain.BaseDirectory;
+            Directory.SetCurrentDirectory(exePath);
 
-            InitDatas(config.Database.DefaultPath, null);
+            // Initialize configuration
+            AssetPath = exePath;
+            var config = WindBotConfig.Instance;
+
+            // Override deck from command line arguments if provided
+            string deckArg = args.FirstOrDefault(arg => arg.StartsWith("Deck="));
+            string nameArg = args.FirstOrDefault(arg => arg.StartsWith("Name="));
+            
+            string deckName = deckArg?.Split('=')[1] ?? config.Deck;
+            string botName = nameArg?.Split('=')[1] ?? config.Name;
+
+            // Handle deck names with and without AI_ prefix
+            if (deckName.StartsWith("AI_"))
+            {
+                deckName = deckName.Substring(3); // Remove AI_ prefix
+            }
+
+            // Ensure paths are absolute
+            string dbPath = Path.IsPathRooted(config.Database.DefaultPath) 
+                ? config.Database.DefaultPath 
+                : Path.Combine(exePath, config.Database.DefaultPath);
+
+            string decksPath = Path.IsPathRooted(config.Game.DefaultDeckPath)
+                ? config.Game.DefaultDeckPath
+                : Path.Combine(exePath, "Decks");
+
+            InitDatas(dbPath, decksPath);
+
+            // Log the deck being used
+            Logger.WriteLine($"Using deck: {deckName}");
 
             bool serverMode = config.ServerMode;
 
@@ -36,8 +65,7 @@ namespace WindBot
             else if (config.Train)
             {
                 string replayDir = config.ReplayDir;
-                string deck = config.Deck;
-                RunTrainingMode(replayDir, deck);
+                RunTrainingMode(replayDir, deckName);
             }
             else
             {
@@ -45,9 +73,17 @@ namespace WindBot
                 {
                     Logger.WriteErrorLine("=== WARN ===");
                     Logger.WriteLine($"No input found, trying to connect to {config.Game.DefaultHost} YGOPro host.");
-                    Logger.WriteLine("If it fails, the program will quit silently.");
+                    Logger.WriteLine("Usage: WindBot.exe ServerMode=true");
+                    Logger.WriteLine("Usage: WindBot.exe ServerMode=false [Username=WindBot] [Deck=ABC] [Dialog=default] [Port=7911] [HostInfo=localhost:7922]");
+                    Logger.WriteLine("Usage: WindBot.exe Train=true ReplayPath=Replay.yrp Deck=ABC");
+                    Logger.WriteLine("=============");
                 }
-                RunFromArgs();
+
+                string host = args.FirstOrDefault(arg => arg.StartsWith("Host="))?.Split('=')[1] ?? config.Game.DefaultHost;
+                int port = int.Parse(args.FirstOrDefault(arg => arg.StartsWith("Port="))?.Split('=')[1] ?? config.Game.DefaultPort.ToString());
+                string dialog = args.FirstOrDefault(arg => arg.StartsWith("Dialog="))?.Split('=')[1] ?? config.Dialog;
+
+                Run(host, port, botName, deckName, dialog);
             }
         }
 
@@ -312,6 +348,18 @@ namespace WindBot
 
             analyzer.SavePatterns();
             Logger.WriteLine("Training completed. Card patterns have been updated.");
+        }
+
+        private static void Run(string host, int port, string botName, string deckName, string dialog)
+        {
+            WindBotInfo Info = new WindBotInfo();
+            Info.Name = botName;
+            Info.Deck = deckName;
+            Info.Host = host;
+            Info.Port = port;
+            Info.Dialog = dialog;
+
+            Run(Info);
         }
     }
 }
