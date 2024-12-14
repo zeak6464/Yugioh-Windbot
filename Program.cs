@@ -6,6 +6,7 @@ using System.Web;
 using System.Linq;
 using WindBot.Game;
 using WindBot.Game.AI;
+using WindBot.Game.AI.Decks;
 using YGOSharp.OCGWrapper;
 using System.Runtime.Serialization.Json;
 using WindBot.Configuration;
@@ -277,9 +278,9 @@ namespace WindBot
         private static void Run(object o)
         {
 #if !DEBUG
-    try
-    {
-    //all errors will be catched instead of causing the program to crash.
+            try
+            {
+            //all errors will be catched instead of causing the program to crash.
 #endif
             WindBotInfo Info = (WindBotInfo)o;
             GameClient client = new GameClient(Info);
@@ -288,31 +289,32 @@ namespace WindBot
             while (client.Connection.IsConnected)
             {
 #if !DEBUG
-        try
-        {
+                try
+                {
 #endif
-                client.Tick();
-                Thread.Sleep(30);
+                    client.Tick();
+                    Thread.Sleep(30);
 #if !DEBUG
-        }
-        catch (Exception ex)
-        {
-            Logger.WriteErrorLine("Tick Error: " + ex);
-            client.Chat("I crashed, check the crash.log file in the WindBot folder", true);
-            using (StreamWriter sw = File.AppendText(Path.Combine(AssetPath, "crash.log"))) {
-                sw.WriteLine("[" + DateTime.Now.ToString("yy-MM-dd HH:mm:ss") + "] Tick Error: " + ex);
-            }
-            return;
-        }
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteErrorLine("Tick Error: " + ex);
+                    client.Chat("I crashed, check the crash.log file in the WindBot folder", true);
+                    using (StreamWriter sw = File.AppendText(Path.Combine(AssetPath, "crash.log")))
+                    {
+                        sw.WriteLine("[" + DateTime.Now.ToString("yy-MM-dd HH:mm:ss") + "] Tick Error: " + ex);
+                    }
+                    break;
+                }
 #endif
             }
-            Logger.DebugWriteLine(client.Username + " end.");
+            Logger.DebugWriteLine(client.Username + " disconnected.");
 #if !DEBUG
-    }
-    catch (Exception ex)
-    {
-        Logger.WriteErrorLine("Run Error: " + ex);
-    }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLine("Run Error: " + ex);
+            }
 #endif
         }
 

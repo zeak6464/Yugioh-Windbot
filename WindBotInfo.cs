@@ -128,6 +128,7 @@ namespace WindBot
         }
     }
 
+    [DataContract]
     public class WindBotInfo
     {
         private string _Name = "WindBot";
@@ -142,80 +143,101 @@ namespace WindBot
         private bool _Debug = false;
         private bool _Chat = true;
         private int _RoomId = 0;
+        private bool _IsFirst = true;
         private CreateGameInfo _CreateGame = null;
 
+        [DataMember]
         public string Name
         {
             get { return _Name; }
             set { _Name = value; }
         }
 
+        [DataMember]
         public string Deck
         {
             get { return _Deck; }
             set { _Deck = value; }
         }
 
+        [DataMember]
         public string DeckFile
         {
             get { return _DeckFile; }
             set { _DeckFile = value; }
         }
 
+        [DataMember]
         public string Dialog
         {
             get { return _Dialog; }
             set { _Dialog = value; }
         }
 
+        [DataMember]
         public string Host
         {
             get { return _Host; }
             set { _Host = value; }
         }
 
+        [DataMember]
         public int Port
         {
             get { return _Port; }
             set { _Port = value; }
         }
 
+        [DataMember]
         public string HostInfo
         {
             get { return _HostInfo; }
             set { _HostInfo = value; }
         }
 
+        [DataMember]
         public int Version
         {
             get { return _Version; }
             set { _Version = value; }
         }
 
+        [DataMember]
         public int Hand
         {
             get { return _Hand; }
             set { _Hand = value; }
         }
 
+        [DataMember]
         public bool Debug
         {
             get { return _Debug; }
             set { _Debug = value; }
         }
 
+        [DataMember]
         public bool Chat
         {
             get { return _Chat; }
             set { _Chat = value; }
         }
 
+        [DataMember]
         public int RoomId
         {
             get { return _RoomId; }
             set { _RoomId = value; }
         }
 
+        [DataMember]
+        public bool IsFirst
+        {
+            get { return _IsFirst; }
+            set { _IsFirst = value; }
+        }
+
+        [DataMember]
         public CreateGameInfo CreateGame
         {
             get { return _CreateGame; }

@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using WindBot.Game.AI;
 using YGOSharp.OCGWrapper;
 using YGOSharp.OCGWrapper.Enums;
 
@@ -36,22 +38,38 @@ namespace WindBot.Game.AI.Decks
             AddExecutor(ExecutorType.Activate, CardId.CalledByTheGrave, DefaultCalledByTheGrave);
             AddExecutor(ExecutorType.Activate, CardId.EffectVeiler, DefaultEffectVeiler);
 
-            // Load deck and analyze card types
-            string deckPath = Deck;
-            var deck = Game.Deck.Load(deckPath);
-            AnalyzeDeck(deck);
-            
-            Logger.WriteLine($"Loaded deck: {deckPath}");
+            try
+            {
+                // Try to analyze the deck, but don't fail if we can't
+                if (Duel.Fields[0].Deck != null)
+                {
+                    AnalyzeDeck(Duel.Fields[0].Deck.Select(card => card.Id).ToList());
+                    Logger.WriteLine($"Successfully analyzed deck with {_cardTypes.Count} cards");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteLine($"Warning: Could not analyze deck: {ex.Message}");
+                // Continue without deck analysis
+            }
         }
 
-        private void AnalyzeDeck(Deck deck)
+        private void AnalyzeDeck(IList<int> cards)
         {
-            foreach (int cardId in deck.Cards.Concat(deck.ExtraCards))
+            foreach (int cardId in cards)
             {
-                var card = YGOSharp.OCGWrapper.Card.Get(cardId);
-                if (card != null)
+                try
                 {
-                    _cardTypes[cardId] = (CardType)card.Type;
+                    var card = YGOSharp.OCGWrapper.Card.Get(cardId);
+                    if (card != null)
+                    {
+                        _cardTypes[cardId] = (CardType)card.Type;
+                    }
+                }
+                catch
+                {
+                    // Skip cards we can't analyze
+                    continue;
                 }
             }
         }

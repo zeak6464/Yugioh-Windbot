@@ -90,7 +90,8 @@ Options:
 
 Example:
 ```
-WindBot.exe Name=WindBot Deck=Blue-Eyes Host=127.0.0.1 Port=7911 Debug=true
+WindBot.exe Name=WindBot Deck=Blue-Eyes Host=127.0.0.1 Port=7911 Debug=true #Will run Blue-Eyes Deck 
+WindBot.exe Name=WindBot Deck=AI_CustomDeck Host=127.0.0.1 Port=7911 Debug=true #Will Run your custom deck
 ```
 
 ### Server Mode

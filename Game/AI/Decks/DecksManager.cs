@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using WindBot.Game.AI;
 
-namespace WindBot.Game.AI
+namespace WindBot.Game.AI.Decks
 {
     public static class DecksManager
     {
@@ -107,6 +106,16 @@ namespace WindBot.Game.AI
 
             Executor executor = (Executor)Activator.CreateInstance(infos.Type, ai, duel);
             executor.Deck = infos.Deck;
+            return executor;
+        }
+
+        public static Executor InstantiateGeneric(GameAI ai, Duel duel)
+        {
+            // Create a new instance of DefaultExecutor for custom decks
+            Type genericType = typeof(DefaultExecutor);
+            Logger.WriteLine("Using Generic executor for custom deck");
+            Executor executor = (Executor)Activator.CreateInstance(genericType, ai, duel);
+            executor.Deck = "CustomDeck"; // Set a placeholder deck name
             return executor;
         }
     }

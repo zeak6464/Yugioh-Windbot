@@ -8,6 +8,7 @@ using YGOSharp.Network.Enums;
 using YGOSharp.Network.Utils;
 using YGOSharp.OCGWrapper;
 using YGOSharp.OCGWrapper.Enums;
+using WindBot.Game.AI.Decks;
 
 namespace WindBot.Game
 {
@@ -70,10 +71,21 @@ namespace WindBot.Game
             _duel = new Duel();
 
             _ai = new GameAI(_duel, Game.Dialog, Game.Chat, Game.Log, Program.AssetPath);
-            _ai.Executor = DecksManager.Instantiate(_ai, _duel, Game.Deck);
-            if(Game.DeckFile != null)
-                Logger.WriteLine("Custom deck provided, loading: " + Game.DeckFile + ".");
-            Deck = Deck.Load(Game.DeckFile ?? _ai.Executor.Deck);
+            
+            // First load the custom deck if provided
+            if (Game.DeckFile != null)
+            {
+                Logger.WriteLine("Custom deck provided, loading: " + Game.DeckFile);
+                Deck = Deck.Load(Game.DeckFile);
+                // Use Generic executor for custom decks
+                _ai.Executor = DecksManager.InstantiateGeneric(_ai, _duel);
+            }
+            else
+            {
+                // Fall back to built-in deck and executor
+                _ai.Executor = DecksManager.Instantiate(_ai, _duel, Game.Deck);
+                Deck = Deck.Load(_ai.Executor.Deck);
+            }
 
             _select_hint = 0;
         }
@@ -339,7 +351,7 @@ namespace WindBot.Game
 
         private void OnDuelEnd(BinaryReader packet)
         {
-            Connection.Close();
+            Logger.DebugWriteLine("Duel ended.");
         }
 
         private void OnChat(BinaryReader packet)
@@ -377,7 +389,7 @@ namespace WindBot.Game
                 else
                     _ai.OnDeckError("DECK");
             }
-            Connection.Close();
+            Logger.WriteErrorLine("Error message received: " + msg);
         }
 
         private void OnRetry(BinaryReader packet)

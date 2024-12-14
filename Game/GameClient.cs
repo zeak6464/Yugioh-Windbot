@@ -29,6 +29,8 @@ namespace WindBot.Game
 
         private GameBehavior _behavior;
 
+        public event Action<string> OnChatReceived;
+
         public GameClient(WindBotInfo Info)
         {
             Username = Info.Name;
