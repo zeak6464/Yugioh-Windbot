@@ -1,0 +1,63 @@
+{
+  "Rewards": {
+    "General": {
+      "default_summon": 0.8,
+      "default_activate_spell": 0.75,
+      "default_set_trap": 0.7,
+      "default_attack": 0.8,
+      "default_chain": 0.75
+    },
+    "FieldState": {
+      "empty_field_summon": 0.9,
+      "no_monsters_activate_spell": 0.85,
+      "winning_position_attack": 0.9,
+      "losing_position_activate": 0.8
+    },
+    "LifePoints": {
+      "gain_life_points": 0.6,
+      "lose_life_points": -0.7,
+      "deal_damage": 0.8,
+      "lethal_damage": 1.0
+    },
+    "CardAdvantage": {
+      "draw_card": 0.5,
+      "search_deck": 0.7,
+      "special_summon": 0.8,
+      "destroy_opponent_card": 0.9,
+      "negate_effect": 0.85
+    },
+    "ResourceManagement": {
+      "use_normal_summon": -0.2,
+      "use_special_summon": -0.1,
+      "discard_cost": -0.3,
+      "banish_cost": -0.4,
+      "life_point_cost": -0.01
+    },
+    "Combos": {
+      "two_card_combo": 0.9,
+      "three_card_combo": 1.0,
+      "archetype_synergy": 0.8,
+      "type_synergy": 0.7,
+      "attribute_synergy": 0.6
+    }
+  },
+  "Learning": {
+    "ExplorationRate": 0.3,
+    "ExplorationDecay": 0.995,
+    "MinExploration": 0.05,
+    "LearningRate": 0.1,
+    "DiscountFactor": 0.9
+  },
+  "DecisionMaking": {
+    "MaxThinkingTime": 5000,
+    "MinConfidence": 0.6,
+    "ChainThreshold": 0.7,
+    "AggressivenessLevel": 0.8
+  },
+  "MemoryManagement": {
+    "MaxStoredGames": 1000,
+    "MaxStoredStates": 10000,
+    "SaveInterval": 100,
+    "PruneThreshold": 0.3
+  }
+}

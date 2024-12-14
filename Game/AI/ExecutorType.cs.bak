@@ -1,0 +1,13 @@
+namespace WindBot.Game.AI
+{
+    public enum ExecutorType
+    {
+        None = 0,
+        Summon = 1,
+        SpSummon = 2,
+        Repos = 3,
+        MonsterSet = 4,
+        SpellSet = 5,
+        Activate = 6
+    }
+}

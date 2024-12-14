@@ -1,0 +1,11 @@
+{
+    "default_*_summon_*": 0.8,
+    "default_*_activate_spell_*": 0.75,
+    "default_*_set_trap_*": 0.7,
+    "default_*_attack_*": 0.8,
+    "default_*_chain_*": 0.75,
+    "empty_field_summon_*": 0.9,
+    "no_monsters_activate_spell_*": 0.85,
+    "winning_attack_*": 0.9,
+    "losing_activate_*": 0.8
+}
