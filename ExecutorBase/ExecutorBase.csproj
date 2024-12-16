@@ -66,6 +66,9 @@
     <Compile Include="..\Game\AI\Learning\ReplayAnalyzer.cs">
       <Link>Game\AI\Learning\ReplayAnalyzer.cs</Link>
     </Compile>
+    <Compile Include="..\Game\AI\Learning\GameState.cs">
+      <Link>Game\AI\Learning\GameState.cs</Link>
+    </Compile>
     <Compile Include="Game\AI\AILogger.cs" />
     <Compile Include="Game\AI\AIUtil.cs" />
     <Compile Include="Game\AI\CardContainer.cs" />
@@ -75,6 +78,8 @@
     <Compile Include="Game\AI\CardSelector.cs" />
     <Compile Include="Game\AI\DeckAttribute.cs" />
     <Compile Include="Game\AI\DefaultExecutor.cs" />
+    <Compile Include="Game\AI\DuelGameState.cs" />
+    <Compile Include="Game\AI\DuelStateAnalyzer.cs" />
     <Compile Include="Game\AI\Enums\DangerousMonster.cs" />
     <Compile Include="Game\AI\Enums\Floodgate.cs" />
     <Compile Include="Game\AI\Enums\FusionSpell.cs" />
@@ -96,17 +101,11 @@
     <Compile Include="..\Game\AI\Learning\TrainingDataManager.cs">
       <Link>Game\AI\Learning\TrainingDataManager.cs</Link>
     </Compile>
-    <Compile Include="..\Game\AI\Learning\DuelStateAnalyzer.cs">
-      <Link>Game\AI\Learning\DuelStateAnalyzer.cs</Link>
-    </Compile>
     <Compile Include="..\Game\AI\Learning\CardEffectLearner.cs">
       <Link>Game\AI\Learning\CardEffectLearner.cs</Link>
     </Compile>
     <Compile Include="..\Game\AI\Learning\ChainSequenceLearner.cs">
       <Link>Game\AI\Learning\ChainSequenceLearner.cs</Link>
-    </Compile>
-    <Compile Include="..\Game\AI\Learning\DuelGameState.cs">
-      <Link>Game\AI\Learning\DuelGameState.cs</Link>
     </Compile>
     <Compile Include="..\Game\AI\Learning\LearningBase.cs">
       <Link>Game\AI\Learning\LearningBase.cs</Link>

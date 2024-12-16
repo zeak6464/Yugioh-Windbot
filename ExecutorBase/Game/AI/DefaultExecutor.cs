@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using WindBot.Game.AI.Enums;
 using YGOSharp.OCGWrapper.Enums;
+using WindBot.Game.AI;
 using WindBot.Game.AI.Learning;
 using Newtonsoft.Json;
-using WindBot.Game.AI;
 using System.IO;
 
 namespace WindBot.Game.AI
@@ -17,9 +17,10 @@ namespace WindBot.Game.AI
         protected new ClientField Bot { get; private set; }
         protected new ClientField Enemy { get; private set; }
         protected DuelStateAnalyzer StateAnalyzer { get; private set; }
-        protected CardEffectLearner EffectLearner { get; private set; }
-        protected ChainSequenceLearner ChainLearner { get; private set; }
+        protected DuelLearningAgent LearningAgent { get; private set; }
         private DuelGameState _lastState;
+        private ExecutorAction _lastAction;
+        protected new ChainSequenceLearner ChainLearner { get; set; }
 
         public DefaultExecutor(GameAI ai, Duel duel) : base(ai, duel)
         {
@@ -28,10 +29,12 @@ namespace WindBot.Game.AI
             Bot = Duel.Fields[0];
             Enemy = Duel.Fields[1];
             StateAnalyzer = new DuelStateAnalyzer(Duel);
-            EffectLearner = new CardEffectLearner();
             ChainLearner = new ChainSequenceLearner();
+            LearningAgent = new DuelLearningAgent();
+            _lastState = null;
+            _lastAction = null;
             
-            AI.Log(LogLevel.Info, "Initializing DefaultExecutor with learning...");
+            AI.Log(LogLevel.Info, "Initializing DefaultExecutor with learning capabilities...");
             
             // Add default executors with always-true condition
             AddExecutor(ExecutorType.Activate, -1, DefaultActivateCheck); // Try activation first
@@ -41,51 +44,104 @@ namespace WindBot.Game.AI
             AddExecutor(ExecutorType.SpSummon, -1, DefaultSpSummonCheck); // Then special summon
             AddExecutor(ExecutorType.Repos, -1, DefaultReposCheck);    // Then reposition
             
-            AI.Log(LogLevel.Info, "Added default executors with learning-based checks");
+            AI.Log(LogLevel.Info, "Added default executors");
         }
 
         protected virtual bool DefaultActivateCheck()
         {
+            // Get current game state
+            var currentState = GetCurrentGameState();
+            
             // Check each card in hand, monster zone, and spell/trap zone
             var allCards = new List<ClientCard>();
-            foreach (var card in Bot.Hand)
-            {
-                if (card != null)
-                {
-                    allCards.Add(card);
-                }
-            }
-            foreach (var card in Bot.MonsterZone)
-            {
-                if (card != null)
-                {
-                    allCards.Add(card);
-                }
-            }
-            foreach (var card in Bot.SpellZone)
-            {
-                if (card != null)
-                {
-                    allCards.Add(card);
-                }
-            }
+            allCards.AddRange(Bot.Hand.Where(card => card != null));
+            allCards.AddRange(Bot.MonsterZone.Where(card => card != null));
+            allCards.AddRange(Bot.SpellZone.Where(card => card != null));
 
             foreach (var card in allCards)
             {
                 // Log card being considered
-                string cardName = card.Name;
-                if (cardName == null) cardName = "???";
-                AI.Log(LogLevel.Info, string.Format("Considering activation of {0} (ID: {1})", cardName, card.Id));
-                
-                var currentState = EffectLearner.CaptureGameState(Duel, 0);
-                if (EffectLearner.ShouldActivateEffect(card, currentState))
+                string cardName = card.Name ?? "???";
+                AI.Log(LogLevel.Info, $"Considering activation of {cardName} (ID: {card.Id})");
+
+                // Create action for this card
+                var action = new ExecutorAction(ExecutorType.Activate, card.Id, () => true);
+
+                // Get action value from learning agent
+                if (LearningAgent != null)
                 {
-                    AI.Log(LogLevel.Info, string.Format("Decided to activate {0}", cardName));
-                    return true;
+                    double actionValue = LearningAgent.GetActionValue(currentState, action);
+                    AI.Log(LogLevel.Debug, $"Action value for {cardName}: {actionValue}");
+
+                    // Update learning with previous state-action pair if exists
+                    if (_lastState != null && _lastAction != null)
+                    {
+                        double reward = GetLearningReward();
+                        LearningAgent.UpdateLearning(_lastState, _lastAction, reward, currentState);
+                    }
+
+                    // Store current state and action
+                    _lastState = currentState;
+                    _lastAction = action;
+
+                    // Use action value to decide
+                    if (actionValue > 0.5) // Threshold can be adjusted
+                    {
+                        return true;
+                    }
                 }
             }
 
             return false;
+        }
+
+        protected DuelGameState GetCurrentGameState()
+        {
+            return new DuelGameState
+            {
+                BotLifePoints = Bot.LifePoints,
+                EnemyLifePoints = Enemy.LifePoints,
+                BotMonsterCount = Bot.MonsterZone.Count(card => card != null),
+                EnemyMonsterCount = Enemy.MonsterZone.Count(card => card != null),
+                CardsInHand = Bot.Hand.Count(card => card != null),
+                EnemyCardsInHand = Enemy.Hand.Count,
+                SpellTrapCount = Bot.SpellZone.Count(card => card != null),
+                EnemySpellTrapCount = Enemy.SpellZone.Count(card => card != null),
+                Turn = Duel.Turn,
+                Phase = Duel.Phase
+            };
+        }
+
+        protected virtual double GetLearningReward()
+        {
+            double reward = 0;
+
+            // Life points difference (normalized)
+            double lifePointsDiff = (Bot.LifePoints - Enemy.LifePoints) / 8000.0;
+            reward += lifePointsDiff;
+
+            // Field advantage
+            int fieldAdvantage = Bot.MonsterZone.Count(card => card != null) - Enemy.MonsterZone.Count(card => card != null);
+            reward += fieldAdvantage * 0.2;
+
+            // Hand advantage
+            int handAdvantage = Bot.Hand.Count(card => card != null) - Enemy.Hand.Count;
+            reward += handAdvantage * 0.1;
+
+            // Additional rewards for specific game states
+            if (Bot.LifePoints > 0 && Enemy.LifePoints <= 0)
+                reward += 1.0; // Win condition
+            else if (Bot.LifePoints <= 0)
+                reward -= 1.0; // Loss condition
+
+            // Card quality in hand (basic approximation)
+            reward += Bot.Hand.Count(card => card != null && card.Attack >= 2000) * 0.1;
+            
+            // Spell/Trap advantage
+            int spellTrapAdvantage = Bot.SpellZone.Count(card => card != null) - Enemy.SpellZone.Count(card => card != null);
+            reward += spellTrapAdvantage * 0.1;
+
+            return reward;
         }
 
         protected virtual bool DefaultSpellSetCheck()
@@ -119,36 +175,32 @@ namespace WindBot.Game.AI
             return true;
         }
 
-        public override void OnChaining(int player, ClientCard card)
+        public override void OnChaining(ClientCard card, int player)
         {
-            var currentState = EffectLearner.CaptureGameState(Duel, player);
-            if (_lastState != null && card != null)
+            base.OnChaining(card, player);
+
+            if (player == 0) // If it's our activation
             {
-                double reward = StateAnalyzer.CalculateReward(Bot, Enemy, Bot, Enemy);
-                AI.Log(LogLevel.Info, string.Format("Learning from chain: {0}, reward: {1}", card.Name, reward));
-                EffectLearner.UpdateCardKnowledge(card, _lastState, currentState, reward);
+                var gameState = DuelGameState.FromDuel(Duel);
+                ChainLearner.StartChain(gameState);
             }
-            _lastState = currentState;
-            
-            base.OnChaining(player, card);
         }
 
         public override void OnChainEnd()
         {
-            var currentState = EffectLearner.CaptureGameState(Duel, 0);
+            var currentState = StateAnalyzer.CaptureGameState(Duel, 0);
             double reward = StateAnalyzer.CalculateReward(Bot, Enemy, Bot, Enemy);
-            ChainLearner.CompleteChain(currentState, reward);
             _lastState = currentState;
             base.OnChainEnd();
         }
 
         public override void OnNewPhase()
         {
-            var currentState = EffectLearner.CaptureGameState(Duel, 0);
+            var currentState = StateAnalyzer.CaptureGameState(Duel, 0);
             if (_lastState != null)
             {
                 double reward = StateAnalyzer.CalculateReward(Bot, Enemy, Bot, Enemy);
-                EffectLearner.UpdateCardKnowledge(null, _lastState, currentState, reward);
+                _lastState = currentState;
             }
             _lastState = currentState;
             base.OnNewPhase();
@@ -156,27 +208,8 @@ namespace WindBot.Game.AI
 
         public override void OnSelectChain(IList<ClientCard> cards)
         {
-            var currentState = EffectLearner.CaptureGameState(Duel, 0);
+            var currentState = StateAnalyzer.CaptureGameState(Duel, 0);
             var chainableCards = cards;
-            var suggestedCards = ChainLearner.SuggestNextChainCards(currentState);
-            
-            if (suggestedCards != null && suggestedCards.Count > 0)
-            {
-                ClientCard bestCard = null;
-                foreach (var card in chainableCards)
-                {
-                    if (card != null && suggestedCards.Contains(card.Id))
-                    {
-                        bestCard = card;
-                        break;
-                    }
-                }
-                if (bestCard != null)
-                {
-                    AI.SelectCard(bestCard);
-                    return;
-                }
-            }
             
             // Default behavior if no suggestions from learning system
             if (chainableCards.Count == 0)
@@ -194,7 +227,7 @@ namespace WindBot.Game.AI
             var selectedCards = new List<ClientCard>();
             if (cards != null && cards.Count > 0)
             {
-                var currentState = EffectLearner.CaptureGameState(Duel, 0);
+                var currentState = StateAnalyzer.CaptureGameState(Duel, 0);
                 var lastChainCard = Duel.CurrentChain.LastOrDefault();
                 ClientCard lastCard = null;
                 if (lastChainCard != null)
@@ -350,15 +383,13 @@ namespace WindBot.Game.AI
 
         public override bool OnSelectYesNo(long desc)
         {
-            var currentState = EffectLearner.CaptureGameState(Duel, 0);
+            var currentState = StateAnalyzer.CaptureGameState(Duel, 0);
             var lastCard = Duel.CurrentChain.LastOrDefault();
             
             if (lastCard != null && lastCard.Card != null)
             {
                 var clientLastCard = new ClientCard(lastCard.Card.Id, CardLocation.Hand, 0, 0);
-                bool shouldActivate = EffectLearner.ShouldActivateEffect(clientLastCard, currentState);
-                AI.SelectYesNo(shouldActivate);
-                return shouldActivate;
+                return true;
             }
             
             return base.OnSelectYesNo(desc);
@@ -368,8 +399,8 @@ namespace WindBot.Game.AI
         {
             if (card != null)
             {
-                var currentState = EffectLearner.CaptureGameState(Duel, 0);
-                return EffectLearner.ShouldActivateEffect(card, currentState);
+                var currentState = StateAnalyzer.CaptureGameState(Duel, 0);
+                return true;
             }
             return base.OnPreActivate(card);
         }
@@ -379,44 +410,6 @@ namespace WindBot.Game.AI
             return positions.FirstOrDefault();
         }
 
-        protected float CalculateReward()
-        {
-            float reward = 0;
-            
-            // Basic reward signals
-            if (Duel.Fields[0].LifePoints > Duel.Fields[1].LifePoints)
-                reward += 0.5f;
-                
-            // Reward for board control
-            int ourMonsters = Duel.Fields[0].GetMonsterCount();
-            int theirMonsters = Duel.Fields[1].GetMonsterCount();
-            reward += (ourMonsters - theirMonsters) * 0.3f;
-            
-            // Extra reward for having monsters (encourages playing cards)
-            reward += ourMonsters * 0.2f;
-            
-            // Reward for hand advantage while having board presence
-            if (ourMonsters > 0)
-                reward += (Duel.Fields[0].Hand.Count - Duel.Fields[1].Hand.Count) * 0.2f;
-            
-            // Reward for having spells/traps (encourages setting cards)
-            reward += Duel.Fields[0].GetSpellCount() * 0.15f;
-            
-            // Big rewards for game-winning states
-            if (Duel.Fields[1].LifePoints <= 0)
-                reward += 2.0f;
-            if (Duel.Fields[0].LifePoints <= 0)
-                reward -= 2.0f;
-                
-            return reward;
-        }
-
-        /// <summary>
-        /// Decide which card should the attacker attack.
-        /// </summary>
-        /// <param name="attacker">Card that attack.</param>
-        /// <param name="defenders">Cards that defend.</param>
-        /// <returns>BattlePhaseAction including the target, or null (in this situation, GameAI will check the next attacker)</returns>
         public override BattlePhaseAction OnSelectAttackTarget(ClientCard attacker, IList<ClientCard> defenders)
         {
             // Calculate optimal attack target based on multiple factors
@@ -461,58 +454,18 @@ namespace WindBot.Game.AI
             return null;
         }
 
-        /// <summary>
-        /// Decide whether to declare attack between attacker and defender.
-        /// Can be overrided to update the RealPower of attacker for cards like Honest.
-        /// </summary>
-        /// <param name="attacker">Card that attack.</param>
-        /// <param name="defender">Card that defend.</param>
-        /// <returns>false if the attack shouldn't be done.</returns>
         public override bool OnPreBattleBetween(ClientCard attacker, ClientCard defender)
         {
             if (attacker != null && defender != null)
             {
-                var currentState = EffectLearner.CaptureGameState(Duel, 0);
+                var currentState = StateAnalyzer.CaptureGameState(Duel, 0);
                 double reward = StateAnalyzer.CalculateReward(Bot, Enemy, Bot, Enemy);
-                EffectLearner.UpdateCardKnowledge(attacker, _lastState, currentState, reward);
                 _lastState = currentState;
             }
             return base.OnPreBattleBetween(attacker, defender);
         }
 
-        private double CalculateChainReward(DuelGameState before, DuelGameState after)
-        {
-            if (before == null || after == null)
-                return 0;
-
-            double reward = 0;
-
-            // Reward for life point changes
-            reward += (after.LifePointsDifference - before.LifePointsDifference) * 0.01;
-
-            // Reward for field advantage
-            int beforeAdvantage = before.MonsterCount + before.SpellTrapCount;
-            int afterAdvantage = after.MonsterCount + after.SpellTrapCount;
-            reward += (afterAdvantage - beforeAdvantage) * 0.5;
-
-            // Reward for hand advantage
-            reward += (after.CardsInHand - before.CardsInHand) * 0.3;
-
-            return reward;
-        }
-
-        /// <summary>
-        /// Set when this card can't beat the enemies
-        /// </summary>
-        public override bool OnSelectMonsterSummonOrSet(ClientCard card)
-        {
-            return card.Level <= 4 && Bot.GetMonsters().Count(m => m.IsFaceup()) == 0 && Util.IsAllEnemyBetterThanValue(card.Attack, true);
-        }
-
-        /// <summary>
-        /// Destroy face-down cards first, in our turn.
-        /// </summary>
-        protected bool DefaultMysticalSpaceTyphoon()
+        protected virtual bool DefaultMysticalSpaceTyphoon()
         {
             if (Duel.CurrentChain.Any(card => card.IsCode(CardId.MysticalSpaceTyphoon)))
             {
@@ -539,10 +492,7 @@ namespace WindBot.Game.AI
             return true;
         }
 
-        /// <summary>
-        /// Destroy face-down cards first, in our turn.
-        /// </summary>
-        protected bool DefaultCosmicCyclone()
+        protected virtual bool DefaultCosmicCyclone()
         {
             foreach (ClientCard card in Duel.CurrentChain)
                 if (card.IsCode(CardId.CosmicCyclone))
@@ -550,10 +500,7 @@ namespace WindBot.Game.AI
             return (Bot.LifePoints > 1000) && DefaultMysticalSpaceTyphoon();
         }
 
-        /// <summary>
-        /// Activate if avail.
-        /// </summary>
-        protected bool DefaultGalaxyCyclone()
+        protected virtual bool DefaultGalaxyCyclone()
         {
             List<ClientCard> spells = Enemy.GetSpells();
             if (spells.Count == 0)
@@ -577,10 +524,7 @@ namespace WindBot.Game.AI
             return true;
         }
 
-        /// <summary>
-        /// Set the highest ATK level 4+ effect enemy monster.
-        /// </summary>
-        protected bool DefaultBookOfMoon()
+        protected virtual bool DefaultBookOfMoon()
         {
             if (Util.IsAllEnemyBetter(true))
             {
@@ -594,10 +538,7 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Return problematic monster, and if this card become target, return any enemy monster.
-        /// </summary>
-        protected bool DefaultCompulsoryEvacuationDevice()
+        protected virtual bool DefaultCompulsoryEvacuationDevice()
         {
             ClientCard target = Util.GetProblematicEnemyMonster(0, true);
             if (target != null)
@@ -617,10 +558,7 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Revive the best monster when we don't have better one in field.
-        /// </summary>
-        protected bool DefaultCallOfTheHaunted()
+        protected virtual bool DefaultCallOfTheHaunted()
         {
             if (!Util.IsAllEnemyBetter(true))
                 return false;
@@ -629,10 +567,7 @@ namespace WindBot.Game.AI
             return true;
         }
 
-        /// <summary>
-        /// Default Scapegoat effect
-        /// </summary>
-        protected bool DefaultScapegoat()
+        protected virtual bool DefaultScapegoat()
         {
             if (DefaultSpellWillBeNegated()) return false;
             if (Duel.Player == 0) return false;
@@ -650,17 +585,11 @@ namespace WindBot.Game.AI
             }
             return false;
         }
-        /// <summary>
-        /// Always active in opponent's turn.
-        /// </summary>
-        protected bool DefaultMaxxC()
+        protected virtual bool DefaultMaxxC()
         {
             return Duel.Player == 1;
         }
-        /// <summary>
-        /// Always disable opponent's effect except some cards like UpstartGoblin
-        /// </summary>
-        protected bool DefaultAshBlossomAndJoyousSpring()
+        protected virtual bool DefaultAshBlossomAndJoyousSpring()
         {
             int[] ignoreList = {
                 CardId.MacroCosmos,
@@ -673,26 +602,17 @@ namespace WindBot.Game.AI
                 return false;
             return Duel.LastChainPlayer == 1;
         }
-        /// <summary>
-        /// Always activate unless the activating card is disabled
-        /// </summary>
-        protected bool DefaultGhostOgreAndSnowRabbit()
+        protected virtual bool DefaultGhostOgreAndSnowRabbit()
         {
             if (Util.GetLastChainCard() != null && Util.GetLastChainCard().IsDisabled())
                 return false;
             return DefaultTrap();
         }
-        /// <summary>
-        /// Always disable opponent's effect
-        /// </summary>
-        protected bool DefaultGhostBelleAndHauntedMansion()
+        protected virtual bool DefaultGhostBelleAndHauntedMansion()
         {
             return DefaultTrap();
         }
-        /// <summary>
-        /// Same as DefaultBreakthroughSkill
-        /// </summary>
-        protected bool DefaultEffectVeiler()
+        protected virtual bool DefaultEffectVeiler()
         {
             ClientCard LastChainCard = Util.GetLastChainCard();
             if (LastChainCard != null && (LastChainCard.IsCode(CardId.GalaxySoldier) && Enemy.Hand.Count >= 3
@@ -700,10 +620,7 @@ namespace WindBot.Game.AI
                 return false;
             return DefaultBreakthroughSkill();
         }
-        /// <summary>
-        /// Chain common hand traps
-        /// </summary>
-        protected bool DefaultCalledByTheGrave()
+        protected virtual bool DefaultCalledByTheGrave()
         {
             int[] targetList =
             {
@@ -728,10 +645,7 @@ namespace WindBot.Game.AI
             }
             return false;
         }
-        /// <summary>
-        /// Default InfiniteImpermanence effect
-        /// </summary>
-        protected bool DefaultInfiniteImpermanence()
+        protected virtual bool DefaultInfiniteImpermanence()
         {
             // TODO: disable s & t
             ClientCard LastChainCard = Util.GetLastChainCard();
@@ -740,19 +654,13 @@ namespace WindBot.Game.AI
                 return false;
             return DefaultDisableMonster();
         }
-        /// <summary>
-        /// Chain the enemy monster, or disable monster like Rescue Rabbit.
-        /// </summary>
-        protected bool DefaultBreakthroughSkill()
+        protected virtual bool DefaultBreakthroughSkill()
         {
             if (!DefaultUniqueTrap())
                 return false;
             return DefaultDisableMonster();
         }
-        /// <summary>
-        /// Chain the enemy monster, or disable monster like Rescue Rabbit.
-        /// </summary>
-        protected bool DefaultDisableMonster()
+        protected virtual bool DefaultDisableMonster()
         {
             if (Duel.Player == 1)
             {
@@ -792,105 +700,66 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Activate only except this card is the target or we summon monsters.
-        /// </summary>
-        protected bool DefaultSolemnJudgment()
+        protected virtual bool DefaultSolemnJudgment()
         {
             return !Util.IsChainTargetOnly(Card) && !(Duel.Player == 0 && Duel.LastChainPlayer == -1) && DefaultTrap();
         }
 
-        /// <summary>
-        /// Activate only except we summon monsters.
-        /// </summary>
-        protected bool DefaultSolemnWarning()
+        protected virtual bool DefaultSolemnWarning()
         {
             return (Bot.LifePoints > 2000) && !(Duel.Player == 0 && Duel.LastChainPlayer == -1) && DefaultTrap();
         }
 
-        /// <summary>
-        /// Activate only except we summon monsters.
-        /// </summary>
-        protected bool DefaultSolemnStrike()
+        protected virtual bool DefaultSolemnStrike()
         {
             return (Bot.LifePoints > 1500) && !(Duel.Player == 0 && Duel.LastChainPlayer == -1) && DefaultTrap();
         }
 
-        /// <summary>
-        /// Activate when all enemy monsters have better ATK.
-        /// </summary>
-        protected bool DefaultTorrentialTribute()
+        protected virtual bool DefaultTorrentialTribute()
         {
             return !Util.HasChainedTrap(0) && Util.IsAllEnemyBetter(true);
         }
 
-        /// <summary>
-        /// Activate enemy have more S&T.
-        /// </summary>
-        protected bool DefaultHeavyStorm()
+        protected virtual bool DefaultHeavyStorm()
         {
             return Bot.GetSpellCount() < Enemy.GetSpellCount();
         }
 
-        /// <summary>
-        /// Activate before other winds, if enemy have more than 2 S&T.
-        /// </summary>
-        protected bool DefaultHarpiesFeatherDusterFirst()
+        protected virtual bool DefaultHarpiesFeatherDusterFirst()
         {
             return Enemy.GetSpellCount() >= 2;
         }
 
-        /// <summary>
-        /// Activate when one enemy monsters have better ATK.
-        /// </summary>
-        protected bool DefaultHammerShot()
+        protected virtual bool DefaultHammerShot()
         {
             return Util.IsOneEnemyBetter(true);
         }
 
-        /// <summary>
-        /// Activate when one enemy monsters have better ATK or DEF.
-        /// </summary>
-        protected bool DefaultDarkHole()
+        protected virtual bool DefaultDarkHole()
         {
             return Util.IsOneEnemyBetter();
         }
 
-        /// <summary>
-        /// Activate when one enemy monsters have better ATK or DEF.
-        /// </summary>
-        protected bool DefaultRaigeki()
+        protected virtual bool DefaultRaigeki()
         {
             return Util.IsOneEnemyBetter();
         }
 
-        /// <summary>
-        /// Activate when one enemy monsters have better ATK or DEF.
-        /// </summary>
-        protected bool DefaultSmashingGround()
+        protected virtual bool DefaultSmashingGround()
         {
             return Util.IsOneEnemyBetter();
         }
 
-        /// <summary>
-        /// Activate when we have more than 15 cards in deck.
-        /// </summary>
-        protected bool DefaultPotOfDesires()
+        protected virtual bool DefaultPotOfDesires()
         {
             return Bot.Deck.Count > 15;
         }
 
-        /// <summary>
-        /// Set traps only and avoid block the activation of other cards.
-        /// </summary>
         protected virtual bool DefaultSpellSet()
         {
             return (Card.IsTrap() || Card.HasType(CardType.QuickPlay) || DefaultSpellMustSetFirst()) && Bot.GetSpellCountWithoutField() < 4;
         }
 
-        /// <summary>
-        /// Summon with no tribute, or with tributes ATK lower.
-        /// </summary>
         protected virtual bool DefaultMonsterSummon()
         {
             if (Card.Level <= 4)
@@ -909,17 +778,11 @@ namespace WindBot.Game.AI
             return tributecount <= 0;
         }
 
-        /// <summary>
-        /// Activate when we have no field.
-        /// </summary>
-        protected bool DefaultField()
+        protected virtual bool DefaultField()
         {
             return Bot.SpellZone[5] == null;
         }
 
-        /// <summary>
-        /// Turn if all enemy is better.
-        /// </summary>
         protected virtual bool DefaultMonsterRepos()
         {
             if (Card.IsMonsterInvincible())
@@ -950,33 +813,21 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// If spell will be negated
-        /// </summary>
         protected bool DefaultSpellWillBeNegated()
         {
             return (Bot.HasInSpellZone(CardId.ImperialOrder, true, true) || Enemy.HasInSpellZone(CardId.ImperialOrder, true)) && !Util.ChainContainsCard(CardId.ImperialOrder);
         }
 
-        /// <summary>
-        /// If trap will be negated
-        /// </summary>
         protected bool DefaultTrapWillBeNegated()
         {
             return (Bot.HasInSpellZone(CardId.RoyalDecreel, true, true) || Enemy.HasInSpellZone(CardId.RoyalDecreel, true)) && !Util.ChainContainsCard(CardId.RoyalDecreel);
         }
 
-        /// <summary>
-        /// If spell must set first to activate
-        /// </summary>
         protected bool DefaultSpellMustSetFirst()
         {
             return Bot.HasInSpellZone(CardId.AntiSpellFragrance, true, true) || Enemy.HasInSpellZone(CardId.AntiSpellFragrance, true);
         }
 
-        /// <summary>
-        /// if spell/trap is the target or enermy activate HarpiesFeatherDuster
-        /// </summary>
         protected bool DefaultOnBecomeTarget()
         {
             if (Util.IsChainTarget(Card)) return true;
@@ -999,17 +850,11 @@ namespace WindBot.Game.AI
             // TODO: ChainContainsCard(id, player)
             return false;
         }
-        /// <summary>
-        /// Chain enemy activation or summon.
-        /// </summary>
         protected bool DefaultTrap()
         {
             return (Duel.LastChainPlayer == -1 && Duel.LastSummonPlayer != 0) || Duel.LastChainPlayer == 1;
         }
 
-        /// <summary>
-        /// Activate when avail and no other our trap card in this chain or face-up.
-        /// </summary>
         protected bool DefaultUniqueTrap()
         {
             if (Util.HasChainedTrap(0))
@@ -1018,25 +863,16 @@ namespace WindBot.Game.AI
             return UniqueFaceupSpell();
         }
 
-        /// <summary>
-        /// Check no other our spell or trap card with same name face-up.
-        /// </summary>
         protected bool UniqueFaceupSpell()
         {
             return !Bot.GetSpells().Any(card => card.IsCode(Card.Id) && card.IsFaceup());
         }
 
-        /// <summary>
-        /// Check no other our monster card with same name face-up.
-        /// </summary>
         protected bool UniqueFaceupMonster()
         {
             return !Bot.GetMonsters().Any(card => card.IsCode(Card.Id) && card.IsFaceup());
         }
 
-        /// <summary>
-        /// Dumb way to avoid the bot chain in mess.
-        /// </summary>
         protected bool DefaultDontChainMyself()
         {
             if (Type != ExecutorType.Activate)
@@ -1046,9 +882,6 @@ namespace WindBot.Game.AI
             return Duel.LastChainPlayer != 0;
         }
 
-        /// <summary>
-        /// Draw when we have lower LP, or destroy it. Can be overrided.
-        /// </summary>
         protected bool DefaultChickenGame()
         {
             if (Executors.Count(exec => exec.Type == Type && exec.CardId == Card.Id) > 1)
@@ -1064,18 +897,12 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Draw when we have Dark monster in hand,and banish random one. Can be overrided.
-        /// </summary>
         protected bool DefaultAllureofDarkness()
         {
             ClientCard target = Bot.Hand.FirstOrDefault(card => card != null && card.HasAttribute(CardAttribute.Dark));
             return target != null;
         }
 
-        /// <summary>
-        /// Clever enough.
-        /// </summary>
         protected bool DefaultDimensionalBarrier()
         {
             const int RITUAL = 0;
@@ -1163,9 +990,6 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Clever enough
-        /// </summary>
         protected bool DefaultInterruptedKaijuSlumber()
         {
             if (Card.Location == CardLocation.Grave)
@@ -1208,9 +1032,6 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Clever enough.
-        /// </summary>
         protected bool DefaultKaijuSpsummon()
         {
             IList<int> kaijus = new[] {
@@ -1249,17 +1070,11 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Summon when enemy have card which we must solve.
-        /// </summary>
         protected bool DefaultCastelTheSkyblasterMusketeerSummon()
         {
             return Util.GetProblematicEnemyCard() != null;
         }
 
-        /// <summary>
-        /// Bounce the problematic enemy card. Ignore the 1st effect.
-        /// </summary>
         protected bool DefaultCastelTheSkyblasterMusketeerEffect()
         {
             if (ActivateDescription == Util.GetStringId(CardId.CastelTheSkyblasterMusketeer, 0))
@@ -1274,9 +1089,6 @@ namespace WindBot.Game.AI
             return false;
         }
 
-        /// <summary>
-        /// Summon when it should use effect, or when the attack of we is lower than enemy's, but not when enemy have monster higher than 3000.
-        /// </summary>
         protected bool DefaultScarlightRedDragonArchfiendSummon()
         {
             int selfBestAttack = Util.GetBestAttack(Bot);
@@ -1289,9 +1101,6 @@ namespace WindBot.Game.AI
             return Bot.GetMonsterCount() == 0;
         }
 
-        /// <summary>
-        /// Activate when we have less monsters than enemy, or when enemy have more than 3 monsters.
-        /// </summary>
         protected bool DefaultScarlightRedDragonArchfiendEffect()
         {
             int selfCount = Bot.GetMonsters().Count(monster => !monster.Equals(Card) && monster.IsSpecialSummoned && monster.HasType(CardType.Effect) && monster.Attack <= Card.Attack);
@@ -1299,17 +1108,11 @@ namespace WindBot.Game.AI
             return selfCount <= oppoCount && oppoCount > 0 || oppoCount >= 3;
         }
 
-        /// <summary>
-        /// Default Stardust Dragon effect
-        /// </summary>
         protected bool DefaultStardustDragonEffect()
         {
             return DefaultNegateCard();
         }
 
-        /// <summary>
-        /// Default Number S39: Utopia the Lightning effect
-        /// </summary>
         protected bool DefaultNumberS39UtopiaTheLightningEffect()
         {
             if (Card.Location != CardLocation.MonsterZone)
@@ -1321,9 +1124,6 @@ namespace WindBot.Game.AI
             return true;
         }
 
-        /// <summary>
-        /// Default Number S39: Utopia the Lightning summon
-        /// </summary>
         protected bool DefaultNumberS39UtopiaTheLightningSummon()
         {
             int bestPower = Util.GetBestPower(Bot);
@@ -1331,41 +1131,26 @@ namespace WindBot.Game.AI
             return oppoBestPower > bestPower || oppoBestPower >= 2500;
         }
 
-        /// <summary>
-        /// Default Evilswarm Exciton Knight effect
-        /// </summary>
         protected bool DefaultEvilswarmExcitonKnightEffect()
         {
             return Bot.GetFieldCount() + 1 < Enemy.GetFieldCount();
         }
 
-        /// <summary>
-        /// Default Evilswarm Exciton Knight summon
-        /// </summary>
         protected bool DefaultEvilswarmExcitonKnightSummon()
         {
             return Bot.GetFieldCount() + 1 < Enemy.GetFieldCount();
         }
 
-        /// <summary>
-        /// Default Stardust Dragon summon
-        /// </summary>
         protected bool DefaultStardustDragonSummon()
         {
             return DefaultSynchroSummon();
         }
 
-        /// <summary>
-        /// Default method to negate cards
-        /// </summary>
         protected bool DefaultNegateCard()
         {
             return (Duel.LastChainPlayer == 1 || Duel.LastChainPlayer == 0) && !DefaultOnBecomeTarget();
         }
 
-        /// <summary>
-        /// Default synchro summon logic
-        /// </summary>
         protected bool DefaultSynchroSummon()
         {
             int bestPower = Util.GetBestPower(Bot);
@@ -1373,9 +1158,6 @@ namespace WindBot.Game.AI
             return oppoBestPower > bestPower || oppoBestPower >= 2500;
         }
 
-        /// <summary>
-        /// Default Honest effect
-        /// </summary>
         protected bool DefaultHonestEffect()
         {
             if (Card.Location == CardLocation.Hand)
@@ -1386,6 +1168,47 @@ namespace WindBot.Game.AI
             }
 
             return Util.IsTurn1OrMain2();
+        }
+
+        protected bool DefaultShouldChain()
+        {
+            // First check basic conditions
+            if (Util.IsChainTarget(Card)) return true;
+
+            // Get current game state
+            var gameState = DuelGameState.FromDuel(Duel);
+
+            // Check with chain learner if we have positive experience
+            bool shouldRespond = ChainLearner.ShouldRespond(gameState, Card.Id);
+            
+            if (shouldRespond)
+            {
+                AI.Log(LogLevel.Info, $"Chain learner suggests responding to {Card.Name} based on past experience");
+            }
+
+            return shouldRespond;
+        }
+
+        protected virtual void UpdateLearning(ExecutorType actionType, int cardId)
+        {
+            if (LearningAgent == null) return;
+
+            string currentState = LearningAgent.GetStateKey(Bot, Enemy);
+            var action = new ExecutorAction(actionType, cardId, () => true);
+            float reward = (float)GetLearningReward();
+            string nextState = LearningAgent.GetStateKey(Bot, Enemy);
+            
+            LearningAgent.UpdateValue(currentState, action, reward, nextState);
+        }
+
+        public virtual void OnActionExecuted(ExecutorType type, int cardId)
+        {
+            UpdateLearning(type, cardId);
+        }
+
+        public virtual void OnDuelEnd()
+        {
+            // Base implementation does nothing
         }
     }
 }

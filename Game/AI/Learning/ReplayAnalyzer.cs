@@ -3,111 +3,136 @@ using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 using YGOSharp.OCGWrapper.Enums;
-using System.Linq;
-using WindBot.Game.AI.Enums;
 
 namespace WindBot.Game.AI.Learning
 {
     public class ReplayAnalyzer
     {
-        private readonly string _replayPath;
-        private Dictionary<int, CardPlayPattern> _cardPatterns;
+        private Dictionary<string, CardPlayPattern> Patterns;
+        private string SavePath;
 
-        public ReplayAnalyzer(string replayPath)
+        public ReplayAnalyzer(string savePath)
         {
-            _replayPath = replayPath;
-            _cardPatterns = new Dictionary<int, CardPlayPattern>();
-            LoadExistingPatterns();
+            SavePath = savePath;
+            Patterns = LoadExistingPatterns();
         }
 
-        public void LoadExistingPatterns()
+        public Dictionary<string, CardPlayPattern> LoadExistingPatterns()
         {
-            string patternPath = Path.Combine("TrainingData", "card_patterns.json");
-            if (File.Exists(patternPath))
+            try
             {
-                string json = File.ReadAllText(patternPath);
-                var patterns = JsonConvert.DeserializeObject<Dictionary<int, CardPlayPattern>>(json);
-                if (patterns != null)
-                    _cardPatterns = patterns;
+                if (File.Exists(SavePath))
+                {
+                    string json = File.ReadAllText(SavePath);
+                    return JsonConvert.DeserializeObject<Dictionary<string, CardPlayPattern>>(json);
+                }
             }
+            catch (Exception ex)
+            {
+                Logger.WriteLine($"Error loading patterns: {ex.Message}");
+            }
+            return new Dictionary<string, CardPlayPattern>();
         }
 
         public void AnalyzeReplayFile(string replayFile)
         {
-            if (!File.Exists(replayFile))
+            try
             {
-                throw new FileNotFoundException("Replay file not found", replayFile);
+                byte[] data = File.ReadAllBytes(replayFile);
+                AnalyzeReplay(data);
             }
-
-            byte[] replayData = File.ReadAllBytes(replayFile);
-            AnalyzeReplay(replayData);
+            catch (Exception ex)
+            {
+                Logger.WriteLine($"Error analyzing replay file: {ex.Message}");
+            }
         }
 
-        public void AnalyzeReplay(byte[] replayData)
+        public void AnalyzeReplay(byte[] data)
         {
-            // Parse replay data
-            using (var ms = new MemoryStream(replayData))
-            using (var reader = new BinaryReader(ms))
+            int index = 0;
+            GameState currentState = new GameState
             {
-                while (ms.Position < ms.Length)
-                {
-                    var action = ReadNextAction(reader);
-                    if (action != null)
-                        ProcessAction(action);
-                }
+                PlayerLP = 8000,
+                OpponentLP = 8000,
+                CardsInHand = 5,  // Starting hand size
+                CardsOnField = 0,
+                OpponentCardsOnField = 0
+            };
+            ReplayAction lastAction = null;
+
+            while (index < data.Length)
+            {
+                ReplayAction action = ReadNextAction(data, ref index);
+                if (action == null)
+                    break;
+
+                action.GameState = CaptureGameState(currentState);
+                ProcessAction(action, lastAction);
+                lastAction = action;
             }
-            
-            // Save learned patterns
+
             SavePatterns();
         }
 
-        private ReplayAction ReadNextAction(BinaryReader reader)
+        private ReplayAction ReadNextAction(byte[] data, ref int index)
         {
-            try
-            {
-                byte actionType = reader.ReadByte();
-                int cardId = reader.ReadInt32();
-                return new ReplayAction
-                {
-                    Type = actionType,
-                    CardId = cardId,
-                    GameState = CaptureGameState(reader)
-                };
-            }
-            catch (EndOfStreamException)
-            {
+            if (index + 2 > data.Length)
                 return null;
-            }
-        }
 
-        private GameState CaptureGameState(BinaryReader reader)
-        {
-            return new GameState
+            byte type = data[index++];
+            int cardId = BitConverter.ToInt32(data, index);
+            index += 4;
+
+            return new ReplayAction
             {
-                Turn = reader.ReadInt32(),
-                Phase = reader.ReadByte(),
-                PlayerLP = reader.ReadInt32(),
-                OpponentLP = reader.ReadInt32(),
-                CardsInHand = reader.ReadInt32(),
-                MonsterCount = reader.ReadInt32(),
-                SpellTrapCount = reader.ReadInt32()
+                Type = type,
+                CardId = cardId
             };
         }
 
-        private void ProcessAction(ReplayAction action)
+        private GameState CaptureGameState(GameState state)
         {
-            if (!_cardPatterns.ContainsKey(action.CardId))
-                _cardPatterns[action.CardId] = new CardPlayPattern();
+            // Deep copy current state
+            return new GameState
+            {
+                PlayerLP = state.PlayerLP,
+                OpponentLP = state.OpponentLP,
+                CardsInHand = state.CardsInHand,
+                CardsOnField = state.CardsOnField,
+                OpponentCardsOnField = state.OpponentCardsOnField
+            };
+        }
 
-            _cardPatterns[action.CardId].AddPattern(action);
+        private void ProcessAction(ReplayAction action, ReplayAction lastAction)
+        {
+            if (lastAction == null)
+                return;
+
+            string key = GetPatternKey(lastAction.CardId, lastAction.Type);
+            if (!Patterns.ContainsKey(key))
+            {
+                Patterns[key] = new CardPlayPattern();
+            }
+
+            Patterns[key].AddPattern(lastAction.GameState, action);
+        }
+
+        private string GetPatternKey(int cardId, byte type)
+        {
+            return $"{cardId}_{type}";
         }
 
         public void SavePatterns()
         {
-            string patternPath = Path.Combine("TrainingData", "card_patterns.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(patternPath));
-            string json = JsonConvert.SerializeObject(_cardPatterns, Formatting.Indented);
-            File.WriteAllText(patternPath, json);
+            try
+            {
+                string json = JsonConvert.SerializeObject(Patterns, Formatting.Indented);
+                File.WriteAllText(SavePath, json);
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteLine($"Error saving patterns: {ex.Message}");
+            }
         }
     }
 
@@ -118,52 +143,68 @@ namespace WindBot.Game.AI.Learning
         public GameState GameState { get; set; }
     }
 
-    public class GameState
-    {
-        public int Turn { get; set; }
-        public int Phase { get; set; }
-        public int PlayerLP { get; set; }
-        public int OpponentLP { get; set; }
-        public int CardsInHand { get; set; }
-        public int MonsterCount { get; set; }
-        public int SpellTrapCount { get; set; }
-    }
-
     public class CardPlayPattern
     {
-        public List<PatternEntry> Patterns { get; set; } = new List<PatternEntry>();
+        private List<PatternEntry> Patterns;
+        private const double SimilarityThreshold = 0.8;
 
-        public void AddPattern(ReplayAction action)
+        public CardPlayPattern()
+        {
+            Patterns = new List<PatternEntry>();
+        }
+
+        public void AddPattern(GameState state, ReplayAction nextAction)
         {
             Patterns.Add(new PatternEntry
             {
-                GameState = action.GameState,
-                ActionType = action.Type,
+                State = state,
+                NextAction = nextAction,
                 SuccessCount = 1
             });
         }
 
-        public byte GetBestAction(GameState currentState)
+        public ReplayAction GetBestAction(GameState currentState)
         {
-            var bestPattern = Patterns
-                .OrderByDescending(p => p.SuccessCount)
-                .FirstOrDefault(p => IsStateSimilar(p.GameState, currentState));
+            PatternEntry bestPattern = null;
+            double bestSimilarity = 0;
 
-            return bestPattern?.ActionType ?? 0;
+            foreach (var pattern in Patterns)
+            {
+                double similarity = IsStateSimilar(pattern.State, currentState);
+                if (similarity > bestSimilarity)
+                {
+                    bestSimilarity = similarity;
+                    bestPattern = pattern;
+                }
+            }
+
+            if (bestSimilarity >= SimilarityThreshold && bestPattern != null)
+            {
+                return bestPattern.NextAction;
+            }
+
+            return null;
         }
 
-        private bool IsStateSimilar(GameState state1, GameState state2)
+        private double IsStateSimilar(GameState state1, GameState state2)
         {
-            return Math.Abs(state1.MonsterCount - state2.MonsterCount) <= 1 &&
-                   Math.Abs(state1.SpellTrapCount - state2.SpellTrapCount) <= 1 &&
-                   state1.Phase == state2.Phase;
+            int totalFeatures = 5;
+            int matchingFeatures = 0;
+
+            if (Math.Abs(state1.PlayerLP - state2.PlayerLP) < 2000) matchingFeatures++;
+            if (Math.Abs(state1.OpponentLP - state2.OpponentLP) < 2000) matchingFeatures++;
+            if (Math.Abs(state1.CardsInHand - state2.CardsInHand) <= 1) matchingFeatures++;
+            if (Math.Abs(state1.CardsOnField - state2.CardsOnField) <= 1) matchingFeatures++;
+            if (Math.Abs(state1.OpponentCardsOnField - state2.OpponentCardsOnField) <= 1) matchingFeatures++;
+
+            return (double)matchingFeatures / totalFeatures;
         }
     }
 
     public class PatternEntry
     {
-        public GameState GameState { get; set; }
-        public byte ActionType { get; set; }
+        public GameState State { get; set; }
+        public ReplayAction NextAction { get; set; }
         public int SuccessCount { get; set; }
     }
 }

@@ -1,7 +1,8 @@
-﻿namespace WindBot.Game.AI
+namespace WindBot.Game.AI
 {
     public enum ExecutorType
     {
+        None = 0,
         Summon,
         SpSummon,
         Repos,

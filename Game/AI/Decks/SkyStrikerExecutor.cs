@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using WindBot;
 using WindBot.Game;
 using WindBot.Game.AI;
+using WindBot.Game.AI.Learning;
 
 namespace WindBot.Game.AI.Decks
 {
@@ -530,51 +531,33 @@ namespace WindBot.Game.AI.Decks
 
         private bool RayeEffect()
         {
-            if (Card.Location == CardLocation.Grave)
+            if (ActivateDescription == Util.GetStringId(CardId.Raye, 0))
             {
-                return true;
-            }
-            if (Card.IsDisabled())
-            {
-                return false;
-            }
-            if (Util.IsChainTarget(Card))
-            {
-                RayeSelectTarget();
-                return true;
-            }
-            if (Card.Attacked && Duel.Phase == DuelPhase.BattleStart)
-            {
-                RayeSelectTarget();
-                return true;
-            }
-            if (Card == Bot.BattlingMonster && Duel.Player == 1)
-            {
-                RayeSelectTarget();
-                return true;
-            }
-            if (Duel.Phase == DuelPhase.Main2)
-            {
-                RayeSelectTarget();
-                return true;
+                // Calculate state features for learning
+                int spellsInGrave = Bot.GetSpellCount();
+                int enemyMonsters = Enemy.GetMonsterCount();
+                int ourAdvantage = Bot.LifePoints - Enemy.LifePoints;
+
+                // Get target through learning agent
+                ClientCard target = GetBestLinkTarget();
+                if (target != null)
+                {
+                    AI.SelectCard(target);
+                    return true;
+                }
             }
             return false;
         }
 
-        private void RayeSelectTarget()
+        private ClientCard GetBestLinkTarget()
         {
-            if (!KagariSummoned && Bot.HasInGraveyard(new[] {
-                CardId.Engage,
-                CardId.HornetDrones,
-                CardId.WidowAnchor
-            }))
-            {
-                AI.SelectCard(CardId.Kagari);
-            }
-            else
-            {
-                AI.SelectCard(CardId.Shizuku, CardId.Kagari, CardId.Hayate);
-            }
+            if (!KagariSummoned && Bot.GetSpellCount() >= 3)
+                return new ClientCard(CardId.Kagari, CardLocation.Extra, -1, 0);
+            if (!ShizukuSummoned && Duel.Phase == DuelPhase.End)
+                return new ClientCard(CardId.Shizuku, CardLocation.Extra, -1, 0);
+            if (!HayateSummoned && Bot.GetSpellCount() >= 3)
+                return new ClientCard(CardId.Hayate, CardLocation.Extra, -1, 0);
+            return null;
         }
 
         private bool KagariSummon()

@@ -90,9 +90,23 @@ Options:
 
 Example:
 ```
-WindBot.exe Name=WindBot Deck=Blue-Eyes Host=127.0.0.1 Port=7911 Debug=true #Will run Blue-Eyes Deck 
-WindBot.exe Name=WindBot Deck=AI_CustomDeck Host=127.0.0.1 Port=7911 Debug=true #Will Run your custom deck
+WindBot.exe Name=WindBot Deck=Blue-Eyes Host=127.0.0.1 Port=7911 Debug=true
 ```
+
+### Connecting to MDPro3
+
+To connect WindBot to MDPro3:
+
+1. Make sure MDPro3 is running and has an open duel room
+2. Run WindBot with the following parameters:
+```
+WindBot.exe Name=WindBot Deck=ABC Host=127.0.0.1 Port=7911 Version=8487 HostInfo=MDPro3
+```
+
+Important parameters for MDPro3:
+- `Version`: Must be set to `8487` to match MDPro3's protocol version
+- `HostInfo`: Must be set to `MDPro3` or your room's password
+- `Port`: Default is `7911`, should match MDPro3's port
 
 ### Server Mode
 

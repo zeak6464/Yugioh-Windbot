@@ -40,17 +40,23 @@ namespace WindBot.Game.AI.Learning
             string filePath = Path.Combine(GetTrainingDataPath(), STATE_VALUES_FILE);
             string json = JsonConvert.SerializeObject(stateActionValues, Formatting.Indented);
             File.WriteAllText(filePath, json);
+            Logger.WriteLine($"[TrainingData] Saved {stateActionValues.Count} state-action values to {STATE_VALUES_FILE}");
         }
 
         public static Dictionary<string, float> LoadStateActionValues()
         {
             string filePath = Path.Combine(GetTrainingDataPath(), STATE_VALUES_FILE);
             if (!File.Exists(filePath))
+            {
+                Logger.WriteLine("[TrainingData] No existing state-action values found. Starting fresh.");
                 return new Dictionary<string, float>();
+            }
 
             string json = File.ReadAllText(filePath);
-            return JsonConvert.DeserializeObject<Dictionary<string, float>>(json) 
+            var values = JsonConvert.DeserializeObject<Dictionary<string, float>>(json) 
                    ?? new Dictionary<string, float>();
+            Logger.WriteLine($"[TrainingData] Loaded {values.Count} state-action values from {STATE_VALUES_FILE}");
+            return values;
         }
 
         public static void SaveExperience(ExperienceReplay experience)
@@ -73,10 +79,14 @@ namespace WindBot.Game.AI.Learning
             experiences.Add(experience);
 
             if (experiences.Count > 10000)
+            {
+                Logger.WriteLine("[TrainingData] Experience buffer full. Removing oldest experiences.");
                 experiences.RemoveRange(0, experiences.Count - 10000);
+            }
 
             string updatedJson = JsonConvert.SerializeObject(experiences, Formatting.Indented);
             File.WriteAllText(filePath, updatedJson);
+            Logger.WriteLine($"[TrainingData] Saved experience. Total experiences: {experiences.Count}");
         }
 
         public static List<ExperienceReplay> LoadExperiences()

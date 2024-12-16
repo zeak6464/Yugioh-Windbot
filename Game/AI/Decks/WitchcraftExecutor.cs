@@ -225,8 +225,9 @@ namespace WindBot.Game.AI.Decks
         }
 
         // check whether enemy activate important card
-        public override void OnChaining(int player, ClientCard card)
+        public override void OnChaining(ClientCard card, int player)
         {
+            base.OnChaining(card, player);
             if (card == null) return;
             // MagiciansLeftHand / MagicianRightHand
             if (!MagicianRightHand_used && card.IsSpell() && card.Controller == 1)
@@ -271,7 +272,6 @@ namespace WindBot.Game.AI.Decks
                     }
                 }
             }
-            base.OnChaining(player, card);
         }
 
         // new turn reset

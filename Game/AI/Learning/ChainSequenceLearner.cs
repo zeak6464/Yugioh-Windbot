@@ -53,28 +53,58 @@ namespace WindBot.Game.AI.Learning
             }
 
             // Update chain response data
-            foreach (var card in finalState.BoardState)
+            for (int i = 0; i < finalState.BoardState.Count; i++)
             {
-                if (!_chainResponses[stateHash].ContainsKey(card.Key))
+                string boardEntry = finalState.BoardState[i];
+                if (string.IsNullOrEmpty(boardEntry))
+                    continue;
+
+                // Parse the card ID from the board entry string
+                int cardId = ParseCardId(boardEntry);
+                if (cardId != 0)  // 0 indicates invalid or no card
                 {
-                    _chainResponses[stateHash][card.Key] = 0;
+                    if (!_chainResponses[stateHash].ContainsKey(cardId))
+                    {
+                        _chainResponses[stateHash][cardId] = 0;
+                    }
+                    _chainResponses[stateHash][cardId] += reward;
                 }
-                _chainResponses[stateHash][card.Key] += reward;
             }
 
             SaveToFile(ChainFile, _chainResponses);
         }
 
+        private int ParseCardId(string boardEntry)
+        {
+            try
+            {
+                string[] parts = boardEntry.Split(':');
+                if (parts.Length >= 2)
+                {
+                    return int.Parse(parts[1]);
+                }
+            }
+            catch (Exception)
+            {
+                // Invalid format, return 0
+            }
+            return 0;
+        }
+
         public bool ShouldRespond(DuelGameState currentState, int cardId)
         {
-            foreach (var entry in _chainResponses)
+            foreach (var stateEntry in _chainResponses)
             {
                 try
                 {
-                    if (AreStatesSimilar(JsonConvert.DeserializeObject<DuelGameState>(entry.Key), currentState))
+                    DuelGameState state = JsonConvert.DeserializeObject<DuelGameState>(stateEntry.Key);
+                    if (AreStatesSimilar(state, currentState))
                     {
-                        if (entry.Value.ContainsKey(cardId) && entry.Value[cardId] > 0)
+                        // If we have positive experience with this card in a similar state
+                        if (stateEntry.Value.ContainsKey(cardId) && stateEntry.Value[cardId] > 0)
+                        {
                             return true;
+                        }
                     }
                 }
                 catch (Exception)
@@ -98,25 +128,6 @@ namespace WindBot.Game.AI.Learning
             }
 
             return suggestions;
-        }
-
-        public void AddChainLink(DuelGameState state, int cardId)
-        {
-            if (_chainStartState == null)
-            {
-                StartChain(state);
-            }
-
-            string stateHash = state.GetStateHash();
-            if (!_chainResponses.ContainsKey(stateHash))
-            {
-                _chainResponses[stateHash] = new Dictionary<int, double>();
-            }
-
-            if (!_chainResponses[stateHash].ContainsKey(cardId))
-            {
-                _chainResponses[stateHash][cardId] = 0;
-            }
         }
     }
 }

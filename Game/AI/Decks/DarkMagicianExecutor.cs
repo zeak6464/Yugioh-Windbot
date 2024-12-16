@@ -1,4 +1,4 @@
-﻿using YGOSharp.OCGWrapper.Enums;
+using YGOSharp.OCGWrapper.Enums;
 using System.Collections.Generic;
 using WindBot;
 using WindBot.Game;
@@ -841,8 +841,7 @@ namespace WindBot.Game.AI.Decks
                 return UniqueFaceupSpell();
             }
             if (Duel.Player == 1 && Bot.HasInSpellZone(CardId.DarkMagicalCircle) &&
-                (Enemy.HasInMonstersZone(CardId.SummonSorceress) || Enemy.HasInMonstersZone(CardId.FirewallDragon))
-                && Card.Location == CardLocation.SpellZone)
+                (Enemy.HasInMonstersZone(CardId.SummonSorceress) || Enemy.HasInMonstersZone(CardId.FirewallDragon)))
             {
                 AI.SelectPlace(Zones.z0 | Zones.z4);
                 AI.SelectCard(CardId.DarkMagician);
@@ -1589,9 +1588,9 @@ namespace WindBot.Game.AI.Decks
             }
             return false;
         }
-        public override void OnChaining(int player, ClientCard card)
+        public override void OnChaining(ClientCard card, int player)
         {
-            base.OnChaining(player, card);
+            base.OnChaining(card, player);
         }
 
 

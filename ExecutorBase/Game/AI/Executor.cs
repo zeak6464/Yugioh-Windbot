@@ -5,6 +5,7 @@ using YGOSharp.OCGWrapper.Enums;
 using WindBot;
 using WindBot.Game;
 using WindBot.Game.AI;
+using WindBot.Game.AI.Learning;
 
 namespace WindBot.Game.AI
 {
@@ -27,6 +28,7 @@ namespace WindBot.Game.AI
         protected ClientField Enemy { get; private set; }
 
         public Random Rand;
+        protected ChainSequenceLearner ChainLearner { get; private set; }
 
         protected Executor(GameAI ai, Duel duel)
         {
@@ -35,6 +37,7 @@ namespace WindBot.Game.AI
             AI = ai;
             Util = new AIUtil(duel);
             Executors = new List<CardExecutor>();
+            ChainLearner = new ChainSequenceLearner();
 
             Bot = Duel.Fields[0];
             Enemy = Duel.Fields[1];
@@ -92,15 +95,53 @@ namespace WindBot.Game.AI
             return true;
         }
 
-        public virtual void OnChaining(int player, ClientCard card)
+        public virtual void OnChaining(ClientCard card, int player)
         {
-            // For overriding
+            if (player == 0) // If it's our activation
+            {
+                var gameState = DuelGameState.FromDuel(Duel);
+                ChainLearner.StartChain(gameState);
+            }
         }
 
         public virtual void OnChainEnd()
         {
-            // For overriding
+            // Calculate reward based on game state changes
+            double reward = CalculateChainReward();
+            
+            // Get current game state
+            var gameState = DuelGameState.FromDuel(Duel);
+
+            // Complete the chain sequence with reward
+            ChainLearner.CompleteChain(gameState, reward);
         }
+
+        protected virtual double CalculateChainReward()
+        {
+            double reward = 0;
+
+            // Reward for life point differences
+            int lpDiff = Bot.LifePoints - Enemy.LifePoints;
+            reward += lpDiff / 1000.0; // Scale LP difference
+
+            // Reward for card advantage
+            int monsterCount = Bot.GetCards(CardLocation.MonsterZone).Count();
+            int spellCount = Bot.GetCards(CardLocation.SpellZone).Count();
+            int enemyMonsterCount = Enemy.GetCards(CardLocation.MonsterZone).Count();
+            int enemySpellCount = Enemy.GetCards(CardLocation.SpellZone).Count();
+            
+            int cardDiff = (monsterCount + spellCount) - (enemyMonsterCount + enemySpellCount);
+            reward += cardDiff * 0.5; // Each card difference worth 0.5
+
+            // Penalty for losing life points
+            if (Bot.LifePoints < 8000)
+            {
+                reward -= (8000 - Bot.LifePoints) / 2000.0;
+            }
+
+            return reward;
+        }
+
         public virtual void OnNewPhase()
         {
             // Some AI need do something on new phase

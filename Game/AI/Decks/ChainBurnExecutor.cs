@@ -1,4 +1,4 @@
-﻿using YGOSharp.OCGWrapper.Enums;
+using YGOSharp.OCGWrapper.Enums;
 using System.Collections.Generic;
 using WindBot;
 using WindBot.Game;
@@ -387,7 +387,7 @@ namespace WindBot.Game.AI.Decks
             else
                 currentchain = Duel.CurrentChain.Count + blast_count + just_count + barrel_count + Waboku_count + Waboku_count + greed_count + Roar_count;
             //if (currentchain >= 3 && Duel.Player == 1) drawfirst = true;
-            if (Bot.HasInSpellZone(CardId.ChainStrike))
+            if(Bot.HasInSpellZone(CardId.ChainStrike))
             {
                 if (strike_count == 1)
                 {
@@ -750,8 +750,9 @@ namespace WindBot.Game.AI.Decks
             return base.OnPreBattleBetween(attacker,defender);
         }
 
-        public override void OnChaining(int player, ClientCard card)
-        {            
+        public override void OnChaining(ClientCard card, int player)
+        {
+            base.OnChaining(card, player);
             expected_blood = 0;
             one_turn_kill = false;
             one_turn_kill_1 = false;
@@ -868,7 +869,6 @@ namespace WindBot.Game.AI.Decks
                     OjamaTrioused = true;
                 }
             }
-            base.OnChaining(player, card);           
-        }
+            }
     }
 }

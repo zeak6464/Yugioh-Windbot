@@ -3,38 +3,58 @@ using System.Collections.Generic;
 using System.Linq;
 using YGOSharp.OCGWrapper.Enums;
 using Newtonsoft.Json;
+using System.IO;
 
 namespace WindBot.Game.AI.Learning
 {
     public abstract class LearningBase
     {
         protected readonly Random Random;
-        protected const string TrainingDataPath = "TrainingData";
+        protected readonly string TrainingDataPath;
 
         protected LearningBase()
         {
             Random = new Random();
-            System.IO.Directory.CreateDirectory(TrainingDataPath);
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            TrainingDataPath = Path.Combine(baseDir, "TrainingData");
+            Directory.CreateDirectory(TrainingDataPath);
         }
 
         protected virtual void SaveToFile<T>(string filename, T data)
         {
-            string path = System.IO.Path.Combine(TrainingDataPath, filename);
-            string json = JsonConvert.SerializeObject(data, Formatting.Indented);
-            System.IO.File.WriteAllText(path, json);
+            try
+            {
+                string fullPath = Path.Combine(TrainingDataPath, filename);
+                string dirPath = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrEmpty(dirPath))
+                    Directory.CreateDirectory(dirPath);
+
+                string json = JsonConvert.SerializeObject(data, Formatting.Indented);
+                File.WriteAllText(fullPath, json);
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteLine($"Error saving training data: {ex.Message}");
+            }
         }
 
         protected virtual T LoadFromFile<T>(string filename) where T : new()
         {
-            string path = System.IO.Path.Combine(TrainingDataPath, filename);
-            if (!System.IO.File.Exists(path))
-                return new T();
+            try
+            {
+                string fullPath = Path.Combine(TrainingDataPath, filename);
+                if (!File.Exists(fullPath))
+                    return new T();
 
-            string json = System.IO.File.ReadAllText(path);
-            T result = JsonConvert.DeserializeObject<T>(json);
-            if (result == null)
+                string json = File.ReadAllText(fullPath);
+                T result = JsonConvert.DeserializeObject<T>(json);
+                return result == null ? new T() : result;
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteLine($"Error loading training data: {ex.Message}");
                 return new T();
-            return result;
+            }
         }
 
         protected virtual bool AreStatesSimilar(DuelGameState state1, DuelGameState state2)

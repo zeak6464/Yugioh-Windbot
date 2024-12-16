@@ -849,23 +849,26 @@ namespace WindBot.Game
             int cc = GetLocalPlayer(packet.ReadByte());
             if (_debug)
                 if (card != null) Logger.WriteLine("(" + cc.ToString() + " 's " + (card != null && card.Name != null ? card.Name : "UnKnowCard") + " activate effect)");
+            
+            // Call AI's OnChaining with the card and player
             _ai.OnChaining(card, cc);
-            //_duel.ChainTargets.Clear();
+            
             _duel.ChainTargetOnly.Clear();
             _duel.LastSummonPlayer = -1;
             _duel.CurrentChain.Add(card);
             _duel.LastChainPlayer = cc;
-
         }
 
         private void OnChainEnd(BinaryReader packet)
         {
-            _duel.MainPhaseEnd = false;
+            if (_debug)
+                Logger.WriteLine("Chain finished");
+            
+            // Call AI's OnChainEnd
             _ai.OnChainEnd();
-            _duel.LastChainPlayer = -1;
+            
             _duel.CurrentChain.Clear();
-            _duel.ChainTargets.Clear();
-            _duel.ChainTargetOnly.Clear();
+            _duel.LastChainPlayer = -1;
         }
 
         private void OnCardSorting(BinaryReader packet)
@@ -886,7 +889,7 @@ namespace WindBot.Game
                 else
                     card = _duel.GetCard(info.controler, (CardLocation)info.location, info.sequence);
                 if (card == null) continue;
-                if (id != 0)
+                if (card.Id == 0)
                     card.SetId(id);
                 originalCards.Add(card);
                 cards.Add(card);

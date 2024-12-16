@@ -26,6 +26,7 @@ namespace WindBot.Game
         public IList<ClientCard> SummoningCards { get; set; }
         public IList<ClientCard> LastSummonedCards { get; set; }
         public bool MainPhaseEnd { get; set; }
+        public List<ClientCard> LastChainCards { get; private set; }
 
         public Duel()
         {
@@ -40,6 +41,7 @@ namespace WindBot.Game
             LastSummonPlayer = -1;
             SummoningCards = new List<ClientCard>();
             LastSummonedCards = new List<ClientCard>();
+            LastChainCards = new List<ClientCard>();
         }
 
         public void Clear()
@@ -54,6 +56,7 @@ namespace WindBot.Game
             LastSummonPlayer = -1;
             SummoningCards.Clear();
             LastSummonedCards.Clear();
+            LastChainCards.Clear();
         }
 
         public ClientCard GetCard(int player, CardLocation loc, int seq)
@@ -198,6 +201,19 @@ namespace WindBot.Game
                     Fields[player].ExtraDeck.Remove(card);
                     break;
             }
+        }
+
+        public void AddChainCard(ClientCard card)
+        {
+            if (card != null)
+            {
+                LastChainCards.Add(card);
+            }
+        }
+
+        public void ClearChainCards()
+        {
+            LastChainCards.Clear();
         }
 
         public int GetLocalPlayer(int player)

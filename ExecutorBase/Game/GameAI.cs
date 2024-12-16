@@ -136,7 +136,7 @@ namespace WindBot.Game
         /// <param name="player">Player who is currently chaining.</param>
         public void OnChaining(ClientCard card, int player)
         {
-            Executor.OnChaining(player,card);
+            Executor?.OnChaining(card, player);
         }
         
         /// <summary>

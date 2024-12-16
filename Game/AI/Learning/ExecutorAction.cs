@@ -1,5 +1,4 @@
-using System;
-using WindBot.Game.AI.Enums;
+using WindBot.Game.AI;
 
 namespace WindBot.Game.AI.Learning
 {
@@ -7,10 +6,10 @@ namespace WindBot.Game.AI.Learning
     {
         public ExecutorType Type { get; set; }
         public int CardId { get; set; }
-        public Func<bool> Condition { get; set; }
+        public System.Func<bool> Condition { get; set; }
         public float PredictedValue { get; set; }
 
-        public ExecutorAction(ExecutorType type, int cardId, Func<bool> condition)
+        public ExecutorAction(ExecutorType type, int cardId, System.Func<bool> condition)
         {
             Type = type;
             CardId = cardId;

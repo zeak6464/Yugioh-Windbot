@@ -190,8 +190,9 @@ namespace WindBot.Game.AI.Decks
                 || !Bot.HasInHand(card.Id);
         }
 
-        public override void OnChaining(int player, ClientCard card)
+        public override void OnChaining(ClientCard card, int player)
         {
+            base.OnChaining(card, player);
             if (player == 0 && card.IsMonster())
                 UsedOPTs |= (1 << card.Sequence);
         }
@@ -955,9 +956,10 @@ namespace WindBot.Game.AI.Decks
             if (!Bot.HasInSpellZoneOrInGraveyard(Spell.Fusion))
             {
                 // don't use 1 Fusion in hand as cost
-                if (!Bot.HasInHand(Spell.Fusion))
+                if (Bot.HasInHand(Spell.Fusion))
+                    cost.Remove(FirstMatch(cost, Spell.Fusion));
+                else
                     return false;
-                cost.Remove(FirstMatch(cost, Spell.Fusion));
             }
 
             if (cost.Count < 1)
@@ -1046,7 +1048,7 @@ namespace WindBot.Game.AI.Decks
                 && Bot.Graveyard.IsExistingMatchingCard(IsNormal);
         }
 
-        // Normal Summon a low-level monster to be tributed for Guitarna or Giftarist
+        // Normal Summon a low-level monster to be used as tribute for Guitarna or Giftarist
         private bool NSLevel7Fodder()
         {
             if (!IsLowLevel(Card) || !Bot.Hand.IsExistingMatchingCard(IsLevel7))
@@ -1373,7 +1375,7 @@ namespace WindBot.Game.AI.Decks
             }
             while (select.Count < 3)
             {
-                int ct = select.Count;
+                // discard according to default importance
                 foreach (int id in HandFodderFallbackPriority)
                 {
                     if (select.Count > 2)
@@ -1384,7 +1386,7 @@ namespace WindBot.Game.AI.Decks
                     select.Add(match);
                 }
                 // avoid infinite loops if no card is added
-                if (ct == select.Count)
+                if (select.Count == 3)
                     break;
             }
 
